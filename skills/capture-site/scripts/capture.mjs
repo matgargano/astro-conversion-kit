@@ -793,6 +793,9 @@ class Crawler {
     }
     const type = res.headers?.['content-type'] ?? '';
     const body = typeof res.body === 'string' ? res.body : '';
+    // A .kml or .pdf a sitemap named is a file even when the server calls it text/xml, unless it reads as a feed.
+    const readsAsFeed = /^application\/(rss|atom)\+xml/i.test(type) || /<(?:rss|feed)\b/i.test(body.slice(0, 2000));
+    if (res.status === 200 && kind !== 'feed' && !readsAsFeed && this.keepsFile(key, res)) return this.saveFile(key, res, type);
     if (res.status === 200 && (FEED_TYPE.test(type) || (kind === 'feed' && !HTML_TYPE.test(type)))) {
       const file = `feeds/${this.slugFor(key)}.xml`;
       writeText(join(this.out, file), res.body);

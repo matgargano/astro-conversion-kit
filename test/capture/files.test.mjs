@@ -138,3 +138,26 @@ test('copy-assets copies a captured file to public/ at its live path', async () 
   assert.equal(readFileSync(join(site, 'public', 'locations.kml'), 'utf8'), KML);
   assert.deepEqual(readFileSync(join(site, 'public', 'docs', 'Report One.pdf')), PDF);
 });
+
+test('a .kml the server calls text/xml is a file, not a feed; a sitemap-listed feed stays a feed', async () => {
+  const stub = await startStub({
+    '/': { body: '<html lang="en"><head><title>Home</title></head><body><h1>Home</h1></body></html>' },
+    '/robots.txt': (origin) => ({ headers: { 'Content-Type': 'text/plain' }, body: `Sitemap: ${origin}/sitemap.xml\n` }),
+    '/sitemap.xml': (origin) => ({
+      headers: { 'Content-Type': 'application/xml' },
+      body: `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/</loc></url><url><loc>${origin}/locations.kml</loc></url><url><loc>${origin}/news.xml</loc></url></urlset>`,
+    }),
+    '/locations.kml': { headers: { 'Content-Type': 'text/xml; charset=UTF-8' }, body: KML },
+    '/news.xml': { headers: { 'Content-Type': 'text/xml; charset=UTF-8' }, body: '<?xml version="1.0"?><rss version="2.0"><channel><title>News</title><item><title>One</title></item></channel></rss>' },
+  });
+  try {
+    const out = tempDir();
+    const result = await run('capture-site/scripts/capture.mjs', [stub.origin, '--out', out, '--delay', '0', '--no-wayback']);
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(join(out, 'files', 'index.json'), 'utf8')).map((f) => f.path), ['/locations.kml']);
+    assert.deepEqual(JSON.parse(readFileSync(join(out, 'feeds', 'index.json'), 'utf8')).map((f) => f.path), ['/news.xml']);
+    assert.equal(readFileSync(join(out, 'files', 'locations.kml'), 'utf8'), KML);
+  } finally {
+    await stub.close();
+  }
+});
