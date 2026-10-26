@@ -143,6 +143,9 @@ test('placeholders.form-id is accepted while the kit placeholder stands for the 
   ], 'file')], { planFile: bare });
   assert.equal(ok.code, 0, ok.stdout);
   assert.equal(parsed(ok).accepted[0].decision, 'form id (needs you)');
+  const spark = await reconcile([failing('placeholders.form-id', '1 placeholder form id in 1 file', ['dist/contact/index.html:9 — submit-form.com/REPLACE'], 'file')], { planFile: bare });
+  assert.equal(spark.code, 0, spark.stdout);
+  assert.equal(parsed(spark).accepted[0].decision, 'form id (needs you)');
   const other = await reconcile([failing('placeholders.form-id', '1 placeholder form id in 1 file', ['src/x.astro:1 — formspree.io/f/your-form-id'], 'file')]);
   assert.equal(other.code, 1);
 });

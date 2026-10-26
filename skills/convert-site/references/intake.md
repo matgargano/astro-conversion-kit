@@ -46,7 +46,8 @@ opening explaining what a repository, a staging deploy and a pull request are.
     3. Domain. Default: <host of LIVE> stays the domain; the new site replaces the old one there
        on launch day (you move DNS, not me).
     4. Forms that send a message (contact, quote). Default: they post to Formspree, with the
-       same fields; a search box stays as it is. If you prefer another form service, name it. (I'll ask for the form id when I wire the forms; nothing waits on it.)
+       same fields; a search box stays as it is. Formspark is also supported (`forms.md`); if you
+       prefer another form service, name it. (I'll ask for the form id when I wire the forms; nothing waits on it.)
        The answer is applied only if the capture finds a form that posts (`method="post"`); if
        it finds none, nothing is rewired and no form item goes on your list.
     5. Test address. One test submission goes to the address you give here, once, from the

@@ -243,3 +243,13 @@ test('usage and missing inputs exit 2; --help exits 0', async () => {
   assert.match(help.stdout, /--endpoint/);
   assert.match(help.stdout, /--thank-you/);
 });
+
+test('--thank-you: a hidden _redirect (Formspark) leads to the thank-you page like _next', async () => {
+  const dist = makeDist(join(root, 'dist-redirect'));
+  edit(dist, 'contact/index.html', '<button type="submit">', '<input type="hidden" name="_redirect" value="/thank-you/"><button type="submit">');
+  mkdirSync(join(dist, 'thank-you'));
+  writeFileSync(join(dist, 'thank-you', 'index.html'), '<!doctype html><title>Thanks</title>');
+  const passed = await forms(dist, ['--endpoint', ENDPOINT, '--thank-you', '/thank-you/']);
+  assert.equal(passed.code, 0, passed.stdout);
+  assert.match(passed.stdout, /^forms: 2 checked, 0 failed$/m);
+});

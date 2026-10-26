@@ -1,8 +1,29 @@
 # Forms
 
 A static site cannot receive a form, so every form posts to a third-party endpoint. Formspree is
-the default; any endpoint that accepts a plain HTML `POST` works the same way. The live site's
-form is never submitted.
+the default and Formspark is supported; any endpoint that accepts a plain HTML `POST` works the
+same way. The live site's form is never submitted.
+
+## Form services
+
+The intake's `forms.service` picks the row. Everything below says "the endpoint", "the honeypot"
+and "the thank-you field": read them from this table.
+
+| | Formspree (default) | Formspark |
+|---|---|---|
+| `action` | `https://formspree.io/f/<form id>` | `https://submit-form.com/<form id>` |
+| Placeholder until the id arrives | `https://formspree.io/f/REPLACE` | `https://submit-form.com/REPLACE` |
+| Honeypot field | `_gotcha` | `_honeypot` or `_gotcha` (both are recognised; keep `_gotcha`, so the gate flags are the same) |
+| Thank-you field | `_next` | `_redirect` (a path or an absolute `http(s)` URL) |
+| Where the id is | the part after `/f/` | the form's How-to tab in the dashboard |
+
+Formspark appends the submitted fields to the `_redirect` URL's query string; add
+`<input type="hidden" name="_append" value="false">` to stop that. The forms gate does not allow
+that field, so it is a needs-you line: turn it off in the form settings if it exists there, or
+accept the fields in the URL. Formspark has spam protection beyond the honeypot (Botpoison,
+Turnstile, hCaptcha, reCAPTCHA v2, spam words, allowed domains) set in its dashboard; mention it
+in the runbook when Contact Form 7's reCAPTCHA was dropped. Its docs are at
+https://documentation.formspark.io/.
 
 ## Which forms this covers
 
@@ -53,7 +74,8 @@ by the forms gate" is a "Not covered" line in the PR.
 
 ## Honeypot
 
-Keep the live honeypot field (the fixture's is `website`) where it was. Add Formspree's own,
+Keep the live honeypot field (the fixture's is `website`) where it was. Add the service's own
+(`_gotcha` works on Formspree and Formspark),
 hidden from people and from assistive technology:
 
     <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" style="display:none" aria-hidden="true">
@@ -66,6 +88,9 @@ Every form leads to one thank-you page, through a hidden field holding the absol
 canonical host:
 
     <input type="hidden" name="_next" value="https://<canonical host>/thank-you/">
+
+On Formspark the field is named `_redirect` instead; the gate accepts `_next`, `_redirect` and
+`redirect`.
 
 The gate is given the path (`--thank-you /thank-you/`). It accepts the field as that path, or as
 an absolute URL whose host is the baseline's `canonicalOrigin` (its `origin` when `meta.json` has

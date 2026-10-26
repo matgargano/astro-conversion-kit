@@ -18,7 +18,7 @@ const NAME = 'forms';
 const OPTIONS = {
   endpoint: { type: 'string', default: '', description: 'the URL every POST form posts to; required when the baseline has a POST form' },
   honeypot: { type: 'string', default: '', description: 'a field name every POST form must have; allowed even where the live form had none' },
-  'thank-you': { type: 'string', default: '', description: 'the page every POST form leads to: a hidden _next or redirect field set to it (the path, or an absolute URL on the canonical host), and a built page' },
+  'thank-you': { type: 'string', default: '', description: 'the page every POST form leads to: a hidden _next, _redirect or redirect field set to it (the path, or an absolute URL on the canonical host), and a built page' },
 };
 const NOTES = `
 A GET form (method get, or no method: a search box) is compared with live as it is: the same
@@ -34,14 +34,14 @@ notes "N forms kept as is (posts to <host>)". Only a POST form posting to the si
 (its own origin, a relative or empty action) is rewired and needs --endpoint.
 Fields are named input, select and textarea elements, without submit, button, reset and image
 inputs, read the way the capture reads them. A _next or redirect field the live form did not
-have is the endpoint's thank-you setting and is not compared with the live fields.
---thank-you <path>: every form must carry a hidden _next or redirect field set to it, and the
+have (_next, _redirect or redirect) is the endpoint's thank-you setting and is not compared with the live fields.
+--thank-you <path>: every form must carry a hidden _next, _redirect (Formspark) or redirect field set to it, and the
 path must be a page in dist. The field may hold the path itself, or an absolute URL (as some
 endpoints require) whose host is the baseline's canonicalOrigin (origin when meta.json has none)
 and whose path is --thank-you. Without it the thank-you page is not checked, and the summary
 counts each form as skipped.
 `;
-const THANK_YOU_FIELDS = ['_next', 'redirect'];
+const THANK_YOU_FIELDS = ['_next', '_redirect', 'redirect'];
 
 // The forms of a built page, as the capture records them; fields are names, hidden values kept.
 export function formsOf(html) {

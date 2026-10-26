@@ -31,6 +31,7 @@ export const PLACEHOLDER_IDS = [
   /G-PLACEHOLDER/i,
   /UA-\d+-\d+/,
   /formspree\.io\/f\/(your-form-id|xxxx+|REPLACE)/i,
+  /submit-form\.com\/(your-form-id|xxxx+|REPLACE)/i,
   /GTM-XXXX+/i,
 ]
 

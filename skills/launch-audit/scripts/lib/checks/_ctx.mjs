@@ -91,7 +91,7 @@ const EMBED_LIMIT = 50
 // form even when it is mounted outside the <form> it replaces, which is how most of them work.
 const FORM_EMBED_HOSTS = [
   'hsforms.net', 'hubspot.com', 'typeform.com', 'jotform.com', 'formstack.com', 'cognitoforms.com',
-  'gravityforms', 'wufoo.com', 'tally.so', 'formspree.io', 'netlify.app', 'netlify.com', 'getform.io', 'basin.com',
+  'gravityforms', 'wufoo.com', 'tally.so', 'formspree.io', 'submit-form.com', 'netlify.app', 'netlify.com', 'getform.io', 'basin.com',
   'formcarry.com', 'mailchimp.com', 'list-manage.com', 'calendly.com', 'acuityscheduling.com',
 ]
 

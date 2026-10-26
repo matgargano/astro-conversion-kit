@@ -31,7 +31,7 @@ counts as live's only when the capture asked for it (its link, or the /favicon.i
 /apple-touch-icon.png probe in meta.json icons) and live answered something other than 200; an
 icon's size only when live's file has the same size.
 Narrow rules that need no decision:
-  placeholders.form-id            every hit is the kit's placeholder formspree.io/f/REPLACE
+  placeholders.form-id            every hit is the kit's placeholder formspree.io/f/REPLACE or submit-form.com/REPLACE
                                   (the form id is still on the needs-you list)
   predecessor.wildcard-redirects  every row is one of the kit's trailing-slash rules
   predecessor.redirect-chains     every row is a slash-only loop (/about -> /about)
@@ -97,7 +97,7 @@ export function isSlashRule(source, destination) {
   return SLASH_PATTERNS.some((p) => p.destination === destination && p.source.test(source));
 }
 
-const FORM_PLACEHOLDER = /^formspree\.io\/f\/REPLACE$/i;
+const FORM_PLACEHOLDER = /^(?:formspree\.io\/f|submit-form\.com)\/REPLACE$/i;
 
 // A url path compared without its trailing slash, as pre-launch compares them.
 export function normalizePath(input) {
@@ -504,7 +504,7 @@ function narrow(check, env, base, decisions) {
   if (values.length === 0) return null;
   if (check.id === 'placeholders.form-id') {
     const ok = values.every((v) => FORM_PLACEHOLDER.test(/ — (.+)$/.exec(v)?.[1] ?? ''));
-    return { ok, rule: 'form-id', decision: 'form id (needs you)', rows: values.map((text) => ({ text, ok, reason: ok ? null : 'not the kit placeholder formspree.io/f/REPLACE' })) };
+    return { ok, rule: 'form-id', decision: 'form id (needs you)', rows: values.map((text) => ({ text, ok, reason: ok ? null : 'not the kit placeholder (formspree.io/f/REPLACE or submit-form.com/REPLACE)' })) };
   }
   if (check.id === 'predecessor.wildcard-redirects') {
     const rows = values.map((text) => {
