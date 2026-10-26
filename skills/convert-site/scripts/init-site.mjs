@@ -148,9 +148,14 @@ function substitute(text, values) {
   return text.replace(/\{\{([A-Z_]+)\}\}/g, (match, key) => (key in values ? values[key] : match));
 }
 
+// npm drops a file named .gitignore from an installed package (a git dependency included), so the
+// template ships it as `gitignore` and it is written as .gitignore here.
+const TEMPLATE_NAMES = { gitignore: '.gitignore' };
+
 function copyTemplates(templateDir, dir, values, skip) {
   for (const source of walk(templateDir)) {
-    const rel = relative(templateDir, source);
+    const raw = relative(templateDir, source);
+    const rel = TEMPLATE_NAMES[raw] ?? raw;
     if (skip.includes(rel)) continue;
     const target = join(dir, rel);
     const text = substitute(readFileSync(source, 'utf8'), values);

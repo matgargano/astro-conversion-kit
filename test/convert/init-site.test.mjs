@@ -422,3 +422,13 @@ test('docs/LAUNCH.md names the sitemap-index.xml the build ships when the captur
   assert.equal(run(baseArgs(dir, bareKit(t))).status, 0);
   assert.ok(readFileSync(join(dir, 'docs', 'LAUNCH.md'), 'utf8').includes('`https://www.fixture-roofing.test/sitemap-index.xml`'));
 });
+
+test('the site template ships its ignore file as "gitignore", which npm keeps, and init-site writes it as .gitignore', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { existsSync: exists } = await import('node:fs');
+  const templates = join(import.meta.dirname, '..', '..', 'skills', 'convert-site', 'templates', 'site');
+  assert.equal(exists(join(templates, 'gitignore')), true);
+  assert.equal(exists(join(templates, '.gitignore')), false, 'npm drops a .gitignore from an installed package');
+  const packed = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: join(import.meta.dirname, '..', '..'), encoding: 'utf8' }));
+  assert.ok(packed[0].files.some((f) => f.path === 'skills/convert-site/templates/site/gitignore'), 'the packed kit carries the template ignore file');
+});
