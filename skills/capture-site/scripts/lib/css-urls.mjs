@@ -1,6 +1,6 @@
 // Asset URLs in a stylesheet: cssUrls(cssText, baseUrl) -> absolute URLs from url(), image and
 // font files only (by extension), in order, without duplicates. data: URIs, @import targets,
-// scripts and anything in a comment are left out. A fragment is dropped; a query is kept.
+// scripts and anything in a comment are left out; a url() in a custom property's value counts. A fragment is dropped; a query is kept.
 // cssImports(cssText, baseUrl) -> the absolute http(s) URLs of its @import rules, in order,
 // without duplicates, whether written as url() or as a string.
 import * as csstree from 'css-tree';
@@ -14,24 +14,36 @@ export function cssUrls(cssText, baseUrl) {
   const ast = csstree.parse(String(cssText ?? ''), { parseValue: true, onParseError: () => {} });
   const found = [];
   const seen = new Set();
+  const add = (raw) => {
+    const value = String(raw ?? '').trim();
+    if (!value || /^data:/i.test(value)) return;
+    let url;
+    try {
+      url = new URL(value, baseUrl);
+    } catch {
+      return;
+    }
+    if (!/^https?:$/.test(url.protocol) || !ASSET_EXTENSIONS.has(extensionOf(url.pathname))) return;
+    url.hash = '';
+    if (!url.search) url.search = '';
+    if (seen.has(url.href)) return;
+    seen.add(url.href);
+    found.push(url.href);
+  };
   csstree.walk(ast, {
     visit: 'Url',
     enter(node) {
       if (this.atrule && this.atrule.name.toLowerCase() === 'import') return;
-      const value = String(node.value ?? '').trim();
-      if (!value || /^data:/i.test(value)) return;
-      let url;
-      try {
-        url = new URL(value, baseUrl);
-      } catch {
-        return;
-      }
-      if (!/^https?:$/.test(url.protocol) || !ASSET_EXTENSIONS.has(extensionOf(url.pathname))) return;
-      url.hash = '';
-      if (!url.search) url.search = '';
-      if (seen.has(url.href)) return;
-      seen.add(url.href);
-      found.push(url.href);
+      add(node.value);
+    },
+  });
+  // A custom property's value (--iti-path-flags-1x: url("../img/flags.webp")) is kept as raw text,
+  // not parsed into Url nodes, yet the browser fetches what var() puts into a url-taking property.
+  csstree.walk(ast, {
+    visit: 'Declaration',
+    enter(node) {
+      if (!node.property.startsWith('--') || node.value?.type !== 'Raw') return;
+      for (const match of node.value.value.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)) add(match[1] ?? match[2] ?? match[3]);
     },
   });
   return found;

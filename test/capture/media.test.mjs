@@ -73,6 +73,19 @@ test('cssImports lists every @import target, url() or string, resolved against t
   assert.deepEqual(cssImports('@import url("data:text/css,a{}"); @import "javascript:x";', 'https://www.example.com/'), []);
 });
 
+test('cssUrls finds a url() in a custom property, quoted or not, and ignores one in a comment', () => {
+  const css = [
+    ':root { --iti-path-flags-1x: url("../img/flags.webp"); --iti-path-globe: url(../img/globe.webp); --q: url(\'../img/q.png\'); --size: 4px; --data: url(data:image/gif;base64,R0lGOD); }',
+    '/* --gone: url(../img/gone.png); */',
+    '.a { background: var(--iti-path-flags-1x); }',
+  ].join('\n');
+  assert.deepEqual(cssUrls(css, 'https://www.example.com/lib/css/x.css'), [
+    'https://www.example.com/lib/img/flags.webp',
+    'https://www.example.com/lib/img/globe.webp',
+    'https://www.example.com/lib/img/q.png',
+  ]);
+});
+
 test('cssUrls keeps image and font url()s only, never a data: URI', () => {
   // The fixture theme has no background image or data: URI, so this CSS adds them.
   const css = [
