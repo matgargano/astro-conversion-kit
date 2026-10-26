@@ -47,7 +47,7 @@ as pages/404.html and text/404.txt; icons: { status, file, contentType, bytes } 
 assets/root-favicon.ico and assets/root-apple-touch-icon.png), sitemaps/ (every sitemap robots.txt names, and their children;
 index.json lists every sitemap URL asked for with its status and file, and one robots.txt
 names that did not answer 200 is also in meta.json discoveryErrors; one on another host is
-listed with skipped: "other host" and never fetched), robots.txt, feeds/, css/ (every stylesheet and the sheets it @imports,
+listed with skipped: "other host" and never fetched), robots.txt, feeds/, files/ (a file a sitemap or --seed names, a .kml or PDF, saved at its path; index.json lists them with a sha1), css/ (every stylesheet and the sheets it @imports,
 on any host and up to 5 deep, <style> blocks as inline-<slug>.css, manifest.json), js/ (every same-site <script src>,
 import map and modulepreload file, manifest.json with each one's kind),
 wp-rest/ (WordPress REST lists), wayback-unverified.txt
@@ -238,7 +238,8 @@ const upperEscapes = (href) => href.replace(/%[0-9a-f]{2}/gi, (m) => m.toUpperCa
 // of scope.
 function scoper(state) {
   const canonical = new URL(state.canonicalOrigin);
-  return (href, base = state.canonicalOrigin) => {
+  // allowFile: a sitemap or a --seed named it, so a file (a .kml, a PDF) is in scope too.
+  return (href, base = state.canonicalOrigin, allowFile = false) => {
     let url;
     try {
       url = new URL(href, base);
@@ -251,7 +252,7 @@ function scoper(state) {
     url.hash = '';
     if (forbidden(url)) return null;
     if (!state.options.includeQuery && !isShortlink(url)) url.search = '';
-    if (notAPage(url)) return null;
+    if (notAPage(url) && !(allowFile && !NOT_PAGES.test(url.pathname))) return null;
     return upperEscapes(url.href);
   };
 }
@@ -354,7 +355,7 @@ class Crawler {
   }
 
   enqueue(href, source, base, kind = 'page') {
-    const key = this.scope(href, base);
+    const key = this.scope(href, base, source === 'sitemap' || source === 'seed');
     if (!key || this.excluded(key)) return null;
     if (isShortlink(new URL(key))) return null; // recorded as an unverified redirect instead
     const sources = (this.state.foundBy[key] ??= []);
@@ -587,6 +588,11 @@ class Crawler {
       counts.feed += 1;
       return false;
     });
+    state.files = (state.files ?? []).filter((f) => {
+      if (!under(f.url)) return true;
+      if (f.file) remove(f.file);
+      return false;
+    });
     for (const [url, e] of Object.entries(state.sitemapLog ?? {})) {
       if (e.skipped || !under(url)) continue;
       if (e.file) remove(e.file);
@@ -807,8 +813,38 @@ class Crawler {
       }
       return;
     }
-    // Any other 200 is a file, not a page; a non-200 is still recorded with its status.
+    // A file a sitemap or a --seed named (a .kml, a PDF) is saved under files/ at its path, so the
+    // build can serve it. Any other 200 is a file the crawl does not keep; a non-200 is still
+    // recorded with its status.
+    if (res.status === 200 && this.keepsFile(key, res)) return this.saveFile(key, res, type);
     if (res.status !== 200) this.addRecord({ ...extractPage('', key, { status: res.status, finalUrl: key }), ...extra });
+  }
+
+  keepsFile(key, res) {
+    const sources = this.state.foundBy[key] ?? [];
+    if (!sources.includes('sitemap') && !sources.includes('seed')) return false;
+    if (!notAPage(new URL(key))) return false;
+    return Buffer.byteLength(res.body ?? '') > 0;
+  }
+
+  saveFile(key, res, contentType) {
+    const path = pathOf(key);
+    let parts;
+    try {
+      parts = decodeURIComponent(path).split('/').filter(Boolean);
+    } catch {
+      parts = path.split('/').filter(Boolean);
+    }
+    if (parts.length === 0 || parts.some((part) => part === '..' || part === '.')) return;
+    const file = ['files', ...parts].join('/');
+    const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(String(res.body ?? ''), 'utf8');
+    mkdirSync(resolve(join(this.out, file), '..'), { recursive: true });
+    writeFileSync(join(this.out, file), body);
+    const files = (this.state.files ??= []);
+    const entry = { url: key, path, status: res.status, contentType: contentType || null, bytes: body.length, sha1: createHash('sha1').update(body).digest('hex'), file };
+    const at = files.findIndex((f) => f.url === key);
+    if (at === -1) files.push(entry);
+    else files[at] = entry;
   }
 
   // Stylesheets in first-seen order, each fetched once after the crawl (css/<n>.css); a page's
@@ -1256,6 +1292,7 @@ class Crawler {
     json('inventory.json', inventory);
     json('redirects.json', this.redirectList());
     json('feeds/index.json', [...feeds].sort(byKey('path')));
+    json('files/index.json', [...(this.state.files ?? [])].sort(byKey('path')));
     json('meta.json', {
       origin: this.state.origin,
       canonicalOrigin: this.state.canonicalOrigin ?? null,
@@ -1445,7 +1482,7 @@ async function main() {
   }
   const tail = outcome === 'max' ? ` Stopped at --max ${args.max}; ${state.queue.length} URLs left (use --resume).` : '';
   console.log(
-    `Captured ${inventory.length} pages (${failed} not 200), ${crawler.redirectList().length} redirects, ${state.feeds.length} feeds into ${out}.${tail}`,
+    `Captured ${inventory.length} pages (${failed} not 200), ${crawler.redirectList().length} redirects, ${state.feeds.length} feeds${state.files?.length ? `, ${state.files.length} files` : ''} into ${out}.${tail}`,
   );
 }
 

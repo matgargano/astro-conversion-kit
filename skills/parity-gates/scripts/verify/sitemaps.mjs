@@ -135,6 +135,8 @@ export function checkSitemaps({ dist, capture, routes, compareOrigin, ownOrigins
   const feeds = routes.filter((r) => r.status === 200 && r.kind === 'feed' && paths(r.path));
   const { roots, failures } = readSitemaps(dist, sitemaps);
   const expected = new Set(pages.map((r) => decode(r.path)));
+  // A file a sitemap listed (a .kml, a PDF) that the capture saved: the routes gate checks it is built.
+  const files = new Set(routes.filter((r) => r.status === 200 && r.kind === 'file' && r.snapshot).map((r) => decode(r.path)));
   for (const { name, urls } of roots ?? []) {
     const field = roots.length > 1 ? `sitemap ${name}` : 'sitemap';
     const listed = new Map();
@@ -145,7 +147,7 @@ export function checkSitemaps({ dist, capture, routes, compareOrigin, ownOrigins
       if (upperEscapes(got) !== upperEscapes(want)) failures.push({ path, field, expected: want, actual: got });
     }
     for (const [path, url] of listed) {
-      if (!expected.has(path) && paths(path)) failures.push({ path, field, expected: null, actual: url });
+      if (!expected.has(path) && !files.has(path) && paths(path)) failures.push({ path, field, expected: null, actual: url });
     }
   }
   const robots = paths('/robots.txt') ? robotsSitemapFailures(dist, compareOrigin, liveSitemapLines(capture), ownOrigins, excluded) : { checked: 0, failures: [] };

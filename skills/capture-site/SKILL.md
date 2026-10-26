@@ -284,6 +284,9 @@ redirects to a captcha path. Every page then looks the same, so a capture of it 
                           index.json: every sitemap URL asked for { url, status, file }, and
                           { url, host, skipped: "other host" } for one on another host,
                           { url, skipped: "excluded" } for one under an --exclude prefix
+    files/                a file a sitemap or --seed names that is not a page (a .kml, a PDF), saved at
+                          its path, byte for byte; index.json: { url, path, status, contentType,
+                          bytes, sha1, file }. A file only a page links to is the media step's.
     feeds/ robots.txt wp-rest/ wayback-unverified.txt meta.json state.json
     README.md             the generated summary and its ## Notes
 

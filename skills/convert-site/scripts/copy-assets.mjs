@@ -24,6 +24,7 @@ Copies to <site>/public/, each at its live path:
               a font on the site's host at its path, one from a font service under /fonts/
   root icons  every "root-icon" entry with a file, at its path (/favicon.ico, ...)
   manifest    the "manifest" entry (the web manifest), at its path
+  files       every file in <capture>/files/index.json (a .kml or PDF a sitemap listed), at its path
   media       every file in the media download that is outside the media plan's prefix
               (mode store or live-temporary: the store or the rewrite serves the prefix);
               in mode repo, every file
@@ -97,7 +98,7 @@ export function copyAssets({ capture, site, mediaCache, plan: planFile }) {
   const meta = readJson(join(capture, 'meta.json'), {});
   const siteOrigin = meta.canonicalOrigin ?? meta.origin ?? null;
   const siteHost = siteOrigin ? bareHost(new URL(siteOrigin).host) : null;
-  const counts = { scripts: 0, concat: 0, fonts: 0, rootIcons: 0, manifest: 0, media: 0, excluded: 0 };
+  const counts = { scripts: 0, concat: 0, fonts: 0, rootIcons: 0, manifest: 0, files: 0, media: 0, excluded: 0 };
   const missing = [];
   const skipped = [];
   const refused = [];
@@ -166,6 +167,12 @@ export function copyAssets({ capture, site, mediaCache, plan: planFile }) {
     }
   }
 
+  // Files a sitemap or a seed named (a .kml, a PDF), saved by the capture under files/.
+  for (const entry of readJson(join(capture, 'files', 'index.json'), [])) {
+    if (!entry?.file || !entry.path || entry.status !== 200) continue;
+    if (put(join(capture, entry.file), entry.path, `file ${entry.path}:`)) counts.files += 1;
+  }
+
   const cache = resolve(mediaCache ?? join(site, '.conversion', 'media-cache'));
   let plan = null;
   if (existsSync(cache)) {
@@ -225,6 +232,7 @@ function main() {
   console.log(`fonts: ${counts.fonts}`);
   console.log(`root icons: ${counts.rootIcons}`);
   console.log(`manifest: ${counts.manifest}`);
+  if (counts.files) console.log(`files: ${counts.files}`);
   if (!plan) console.log('media: 0 (no media download)');
   else if (plan.mode === 'repo') console.log(`media (repo mode, every file): ${counts.media}`);
   else console.log(`media outside ${plan.prefix}: ${counts.media}`);

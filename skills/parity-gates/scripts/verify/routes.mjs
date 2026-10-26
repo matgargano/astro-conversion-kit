@@ -124,6 +124,15 @@ export function checkRoutes({ dist, routes, media, redirects = [], scripts = [],
     }
   }
 
+  // A file a sitemap or a seed named, saved by the capture (snapshot set): built at its path.
+  for (const route of routes) {
+    if (route.kind !== 'file' || route.status !== 200 || !route.snapshot) continue;
+    const file = decode(route.path).replace(/^\/+/, '');
+    expected.add(file);
+    if (!paths(route.path)) continue;
+    checked += 1;
+    if (!present.has(file)) failures.push({ path: route.path, field: 'file', expected: file, actual: null });
+  }
   for (const item of media) expected.add(decode(item.path).replace(/^\/+/, ''));
   for (const script of scripts) expected.add(decode(new URL(script.src).pathname).replace(/^\/+/, ''));
   for (const sheet of stylesheets) {

@@ -107,7 +107,7 @@ function pageKind(record, rest) {
   return 'page';
 }
 
-export function buildRoutes({ inventory, feeds, media, templates, rest, foundBy }) {
+export function buildRoutes({ inventory, feeds, capturedFiles = [], media, templates, rest, foundBy }) {
   const template = new Map();
   for (const t of templates) for (const path of t.paths ?? []) template.set(path, t.name);
   const routes = inventory.map((r) => ({
@@ -124,6 +124,12 @@ export function buildRoutes({ inventory, feeds, media, templates, rest, foundBy 
     if (seen.has(f.path)) continue;
     seen.add(f.path);
     routes.push({ path: f.path, status: f.status, kind: 'feed', template: 'other', noindex: false, snapshot: f.file ?? null, foundBy: sortSources(foundBy[f.url] ?? []) });
+  }
+  // Files a sitemap or a seed named (a .kml, a PDF) that the capture saved: the build serves them.
+  for (const f of capturedFiles) {
+    if (seen.has(f.path) || f.status !== 200) continue;
+    seen.add(f.path);
+    routes.push({ path: f.path, status: f.status, kind: 'file', template: 'other', noindex: false, snapshot: f.file ?? null, foundBy: sortSources(foundBy[f.url] ?? []) });
   }
   // Files the pages link to (a PDF in the footer) are URLs the new site has to answer too.
   const files = new Map(media.filter((m) => m.status === 200).map((m) => [m.path, m]));
@@ -357,6 +363,7 @@ function build(capture, out, csvFile) {
   const routes = buildRoutes({
     inventory,
     feeds: readJson(join(capture, 'feeds', 'index.json'), []),
+    capturedFiles: readJson(join(capture, 'files', 'index.json'), []),
     media,
     templates: readJson(join(capture, 'templates.json')),
     rest: restKinds(capture),
