@@ -77,6 +77,7 @@ the default `exceptions.json` and `proposals.json` may be missing.
 | `redirect` | redirects | the redirect source | the baseline target with the site's origin stripped (`/services/`, not `https://www.example.com/services/`) / the new target |
 | `media` | media | the media path | the baseline bytes (a number) / the built bytes, or `""` for a file the build drops |
 | `markup` | none | the page | a description of the markup before / after (`<a href="https://www.example.com/contact/">` / `<a href="/contact/">`) |
+| `formField` | forms | the page | the live field name (`names[first_name]`) / the built name (`first_name`). Renames only |
 | `routes` | routes | a route the capture could not read (status other than 200, 3xx, 404 or 410) | its captured status as a string (`"503"`, `"0"` for a network error) / `"skip"` to leave it out (counted as skipped, never passed), or the path of the built page that replaces it (it must be built) |
 
 A `markup` record is a reviewed change no gate measures, such as body `<a href>` links rewritten
@@ -85,10 +86,16 @@ difference). Every gate accepts it as a record and never compares it, so it is n
 "path not checked"; `from` and `to` describe the change for the person who reviews it.
 
 A `routes` exception only covers a route that was not captured; recapture it when you can, since
-a skipped route is a URL the new site may not answer. `sitemaps`, `forms`, `scripts` and
-`headers` take no exceptions. An extra built path is
-`--allow-extra`; a dropped vendor is `keep: false` in `baseline/scripts.json`; forms are set by
+a skipped route is a URL the new site may not answer. `sitemaps`, `scripts` and `headers` take no exceptions, and `forms` takes only `formField` (below). An extra
+built path is `--allow-extra`; a dropped vendor is `keep: false` in `baseline/scripts.json`; forms are set by
 `--endpoint`, `--honeypot` and `--thank-you`.
+
+A `formField` record renames one field of a form: a WordPress form plugin names fields like
+`names[first_name]`, which a form service such as Formspark receives as a nested JSON object, so the
+notification shows `{ "first_name": ..., "last_name": ... }` in one row. The record says the build posts
+`first_name` where live posted `names[first_name]`. It renames only: a field cannot be added or dropped
+this way, an exception that matches no live field on the path fails the gate, and like every record it
+needs `approvedBy` and `date`.
 
 ### No redirect on purpose
 

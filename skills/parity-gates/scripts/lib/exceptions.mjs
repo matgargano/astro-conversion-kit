@@ -11,6 +11,9 @@ export const EXCEPTION_KEYS = ['path', 'field', 'from', 'to', 'reason', 'approve
 export const EXCEPTION_FIELDS = [
   'title', 'description', 'canonical', 'robots', 'lang', 'h1', 'h2', 'text',
   'og', 'jsonLd', 'link', 'redirect', 'media', 'routes',
+  // A form field the build names differently from live (forms gate): `from` is the live name, `to` the built one.
+  // It renames only; a field cannot be added or dropped this way.
+  'formField',
   // A reviewed change no gate measures (a rewritten href that still resolves): accepted as a
   // record, never compared.
   'markup',

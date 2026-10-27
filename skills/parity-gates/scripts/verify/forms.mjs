@@ -9,7 +9,8 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNodeVersion } from '../lib/node-version.mjs';
-import { gateArgs, report } from '../lib/gate-cli.mjs';
+import { gateArgs, gateExceptions, report } from '../lib/gate-cli.mjs';
+import { exceptionFailure } from '../lib/exceptions.mjs';
 import { attr, byTag, findAll, parseHtml } from '../lib/html.mjs';
 import { formFields } from '../lib/forms.mjs';
 import { distFiles, firstExisting, originOf, pageFiles, pageFormat, readJson, requireInputs } from '../lib/dist.mjs';
@@ -35,6 +36,10 @@ notes "N forms kept as is (posts to <host>)". Only a POST form posting to the si
 Fields are named input, select and textarea elements, without submit, button, reset and image
 inputs, read the way the capture reads them. A _next or redirect field the live form did not
 have (_next, _redirect or redirect) is the endpoint's thank-you setting and is not compared with the live fields.
+An approved rename is the one exception the forms gate takes: { field: "formField", from: <live name>,
+to: <built name> } on the page's path renames that field in the expected list before it is compared (a
+bracket name such as names[first_name] reaches a form service as a nested JSON object; first_name does not). It
+only renames: it cannot add or drop a field, and an exception that matches no live field fails the gate.
 --thank-you <path>: every form must carry a hidden _next, _redirect (Formspark) or redirect field set to it, and the
 path must be a page in dist. The field may hold the path itself, or an absolute URL (as some
 endpoints require) whose host is the baseline's canonicalOrigin (origin when meta.json has none)
@@ -186,7 +191,19 @@ export function compareForm(path, label, expected, actual, { endpoint, honeypot,
   return failures;
 }
 
-export function checkForms({ dist, forms, endpoint, honeypot = '', thankYou = '', meta = {}, paths = () => true }) {
+/** The expected form's fields with the approved renames for this path applied; `used` collects the exceptions that matched. */
+export function renameFields(form, renames, used) {
+  const fields = (form.fields ?? []).map((f) => {
+    const name = typeof f === 'string' ? f : f.name;
+    const hit = renames.find((r) => r.from === name);
+    if (!hit) return f;
+    used.add(hit);
+    return typeof f === 'string' ? hit.to : { ...f, name: hit.to };
+  });
+  return { ...form, fields };
+}
+
+export function checkForms({ dist, forms, endpoint, honeypot = '', thankYou = '', meta = {}, paths = () => true, exceptions = [] }) {
   const siteHost = siteHostOf(meta);
   const origins = [meta.origin, meta.canonicalOrigin].map((o) => originOf(o ?? '')).filter(Boolean);
   let getCount = 0;
@@ -196,8 +213,15 @@ export function checkForms({ dist, forms, endpoint, honeypot = '', thankYou = ''
   const failures = [];
   let checked = 0;
   let formCount = 0;
-  for (const [path, expected] of Object.entries(forms)) {
-    if (!paths(path) || expected.length === 0) continue;
+  const renames = exceptions.filter((e) => e.field === 'formField');
+  const used = new Set();
+  // an exception for a path that has no checked form is stale, like one that matches no field
+  for (const e of renames) {
+    if (paths(e.path) && !(forms[e.path]?.length > 0)) failures.push(exceptionFailure(e, 'path not checked'));
+  }
+  for (const [path, baselineForms] of Object.entries(forms)) {
+    if (!paths(path) || baselineForms.length === 0) continue;
+    const expected = baselineForms.map((form) => renameFields(form, renames.filter((e) => e.path === path), used));
     checked += 1;
     const candidates = pageFiles(path, format);
     const file = firstExisting(dist, candidates);
@@ -227,7 +251,11 @@ export function checkForms({ dist, forms, endpoint, honeypot = '', thankYou = ''
       failures.push(...compareForm(path, label, form, actual[i], { endpoint, honeypot, thankYou, siteHost }));
     });
   }
+  for (const e of renames) {
+    if (paths(e.path) && forms[e.path]?.length > 0 && !used.has(e)) failures.push(exceptionFailure(e, 'no longer matches the baseline'));
+  }
   const notes = getCount ? [`${getCount} search/GET forms compared`] : [];
+  if (used.size) notes.push(`${used.size} approved field ${used.size === 1 ? 'rename' : 'renames'} applied`);
   if (keptHosts.length) {
     const n = keptHosts.length;
     notes.push(`${n} ${n === 1 ? 'form' : 'forms'} kept as is (posts to ${[...new Set(keptHosts)].join(', ')})`);
@@ -262,6 +290,7 @@ function main() {
     thankYou: args.thankYou,
     meta,
     paths: args.paths,
+    exceptions: gateExceptions(NAME, args),
   });
   report(NAME, results, { json: args.json });
 }
