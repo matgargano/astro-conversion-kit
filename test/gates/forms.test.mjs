@@ -253,3 +253,59 @@ test('--thank-you: a hidden _redirect (Formspark) leads to the thank-you page li
   assert.equal(passed.code, 0, passed.stdout);
   assert.match(passed.stdout, /^forms: 2 checked, 0 failed$/m);
 });
+
+// ── approved field renames: the one exception the forms gate takes ───────────────────────────────
+const record = (over = {}) => ({ path: '/contact/', field: 'formField', from: 'email', to: 'email_address', reason: 'a bracket name reaches the form service as a nested object', approvedBy: 'client', date: '2026-10-27', ...over });
+function renamedDist(name) {
+  const dist = makeDist(join(root, name));
+  edit(dist, 'contact/index.html', 'name="email"', 'name="email_address"');
+  return dist;
+}
+const withExceptions = (dist, records, args = ['--endpoint', ENDPOINT]) => {
+  const file = join(root, `exceptions-${Math.random().toString(36).slice(2)}.json`);
+  writeFileSync(file, JSON.stringify(records));
+  return forms(dist, [...args, '--exceptions', file]);
+};
+
+test('a field the build names differently fails without an exception, and passes with an approved formField rename', async () => {
+  const dist = renamedDist('dist-renamed');
+  const without = await forms(dist, ['--endpoint', ENDPOINT]);
+  assert.equal(without.code, 1);
+  assert.match(without.stdout, /\/contact\/ fields: expected \["name","email","message","website"\], got \["name","email_address","message","website"\]/);
+  const withIt = await withExceptions(dist, [record()]);
+  assert.equal(withIt.code, 0, withIt.stdout + withIt.stderr);
+  assert.match(withIt.stdout, /^ {2}1 approved field rename applied$/m);
+});
+
+test('a rename covers only the field it names: another changed field still fails', async () => {
+  const dist = renamedDist('dist-renamed-two');
+  edit(dist, 'contact/index.html', 'name="message"', 'name="body"');
+  const result = await withExceptions(dist, [record()]);
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /expected \["name","email_address","message","website"\], got \["name","email_address","body","website"\]/);
+});
+
+test('a rename cannot add or drop a field: an extra built field and a missing one still fail', async () => {
+  const extra = renamedDist('dist-renamed-extra');
+  edit(extra, 'contact/index.html', 'name="website"', 'name="website"><input type="text" name="extra"');
+  assert.equal((await withExceptions(extra, [record()])).code, 1, 'an added field');
+  const dropped = makeDist(join(root, 'dist-dropped'));
+  edit(dropped, 'contact/index.html', 'name="email"', 'name="email" disabled data-x="1"');
+  assert.equal((await withExceptions(dropped, [record({ from: 'email', to: '' })])).code, 1, 'a record that renames to nothing does not drop the field');
+});
+
+test('an exception that matches no live field, or a path with no form, fails the gate as stale', async () => {
+  const dist = renamedDist('dist-renamed-stale');
+  const stale = await withExceptions(dist, [record(), record({ from: 'phone', to: 'tel' })]);
+  assert.equal(stale.code, 1);
+  assert.match(stale.stdout, /exception: expected \{"field":"formField","from":"phone","to":"tel"\}, got "no longer matches the baseline"/);
+  const nowhere = await withExceptions(dist, [record(), record({ path: '/about/' })]);
+  assert.equal(nowhere.code, 1);
+  assert.match(nowhere.stdout, /\/about\/ exception: .*got "path not checked"/);
+});
+
+test('without exceptions nothing changes: the exceptions file is optional and other fields in it are ignored', async () => {
+  const result = await withExceptions(good, [{ path: '/about/', field: 'title', from: 'a', to: 'b', reason: 'r', approvedBy: 'c', date: '2026-10-27' }]);
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal((await forms(good, ['--endpoint', ENDPOINT])).code, 0);
+});

@@ -30,7 +30,7 @@ conversion, and it never changes the default build. Proposals and exceptions fol
          "approvedBy": "proposed", "date": "<today>" }
 
    `field` is one of the gates' fields (`title`, `description`, `canonical`, `robots`, `lang`,
-   `h1`, `h2`, `text`, `og`, `jsonLd`, `link`, `redirect`, `media`, `markup`). A change no gate
+   `h1`, `h2`, `text`, `og`, `jsonLd`, `link`, `redirect`, `media`, `formField`, `markup`). A change no gate
    field covers (`async` on a script tag, a header) needs no record of its own, but the decision
    id still switches it; record it with `field: "markup"` (checked by no gate, `from` and `to`
    describing the change) when the reviewer should see it in the records, as for rewritten hrefs.
