@@ -424,9 +424,27 @@ test('output.robots-txt is accepted when every off-host Sitemap: line is one the
   const staging = await at([check('the Sitemap: line points at staging.example.com, not www.fixture-roofing.test')]);
   assert.equal(staging.code, 1, 'a host live never named blocks');
 
-  build(['https://sister.example.com/sitemap_index.xml']);
-  const blocked = await at([check(sister, 'robots.txt contains "Disallow: /", which blocks the whole site')]);
-  assert.equal(blocked.code, 1, 'any other robots.txt problem still blocks');
+  const everyone = 'robots.txt contains "Disallow: /", which blocks the whole site';
+  writeFileSync(join(site, 'dist', 'robots.txt'), 'User-agent: *\nDisallow: /\n\nSitemap: https://sister.example.com/sitemap_index.xml\n');
+  const blocked = await at([check(sister, everyone)]);
+  assert.equal(blocked.code, 1, 'a Disallow: / for every crawler still blocks');
+
+  // A Disallow: / under a named bot (an AI crawler the site opts out of) leaves search engines in.
+  writeFileSync(join(site, 'dist', 'robots.txt'), 'User-agent: *\nAllow: /\n\nUser-agent: ClaudeBot\nUser-agent: CCBot\nDisallow: /\n');
+  const bots = await at([check(everyone)]);
+  assert.equal(bots.code, 0, bots.stdout + bots.stderr);
+});
+
+test('output.404-page: a 404 without noindex is accepted when live had none and a decision names the check; one live noindexed blocks', async () => {
+  const row = '404.html has no noindex, so search engines may index the error page';
+  const planFile = planWith('plan-404-noindex', ['d2', 'output.404-page: the 404 page keeps its head, as live']);
+  const check = [failing('output.404-page', row, [row], 'file')];
+  const ok = await reconcile(check, { planFile, captureDir: notFoundCapture('capture-404-plain') });
+  assert.equal(ok.code, 0, ok.stdout);
+  assert.equal(parsed(ok).accepted[0].decision, 'd2');
+  const noindexed = notFoundCapture('capture-404-noindex', { head: '<title>x</title><meta name="robots" content="noindex">' });
+  assert.equal((await reconcile(check, { planFile, captureDir: noindexed })).code, 1);
+  assert.equal((await reconcile(check, { planFile: bare, captureDir: notFoundCapture('capture-404-nodecision') })).code, 1, 'no decision, no acceptance');
 });
 
 // A copy of the baseline with seo.json rows changed by edit(seo) and extra routes appended.

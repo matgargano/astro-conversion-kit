@@ -218,6 +218,8 @@ export function loadBaseline(dir, captureDir = null) {
     },
     servedIcon: (pattern) => [...files].some((p) => pattern.test(p)) || assets.some((a) => a.status === 200 && a.url && pattern.test(pathnameOf(a.url) ?? '')),
     anyFile: (pattern) => [...files].some((p) => pattern.test(p)),
+    // The paths of live's own files (status 200) that match, from the capture's asset index.
+    liveFiles: (pattern) => assets.filter((a) => a.status === 200 && a.url && pattern.test(pathnameOf(a.url) ?? '')).map((a) => pathnameOf(a.url)),
     isMedia: (path) => mediaPaths.has(path),
     pagesWithOgImage: (image) => Object.keys(allSeo).filter((p) => sameUrl(allSeo[p].og?.image, image)),
     // The Sitemap: URLs of the live robots.txt the capture saved, [] without it.
@@ -329,6 +331,11 @@ const ROWS = {
     if (!m) return null;
     return [onPage(base, m[1], 'h1', value, (seo) => ((seo.h1 ?? []).length === Number(m[2]) ? null : `live recorded ${(seo.h1 ?? []).length}`))];
   },
+  'output.404-page': (base, value) => {
+    const m = /^(\S+) has no noindex, so search engines may index the error page$/.exec(value);
+    if (!m) return null;
+    return [onPage(base, m[1], 'robots', value, (seo) => (/\bnoindex\b/i.test(seo.robots ?? '') ? `live recorded robots "${seo.robots}"` : null))];
+  },
   'output.canonical': (base, value) => {
     const check = (rel, test) => [onPage(base, rel, 'canonical', value, (seo) => (test(seo.canonical) ? null : `live recorded canonical ${seo.canonical ?? 'none'}`))];
     let m = /^(\S+) has no canonical link$/.exec(value);
@@ -367,7 +374,7 @@ const ROWS = {
     if (!m) return null;
     return [onPage(base, m[1], 'robots', value, (seo) => (/\bnoindex\b/i.test(seo.robots ?? '') ? `live recorded robots "${seo.robots}"` : null))];
   },
-  'output.favicon-set': (base, value) => {
+  'output.favicon-set': (base, value, _detail, env) => {
     const row = (paths, ok, reason) => [{ text: value, field: 'favicon', paths, ok, reason: ok ? null : reason }];
     let m = /^(\S+) is missing$/.exec(value);
     if (m) {
@@ -376,7 +383,13 @@ const ROWS = {
       if (status === null) return row([path], false, `the capture never asked for ${path}, so it cannot say live lacked it`);
       return row([path], status !== 200, `live served ${path}`);
     }
-    if (value.startsWith('neither favicon.svg nor')) return row(['/favicon.svg'], !base.servedIcon(/^\/(?:.*\/)?(favicon\.svg|(favicon|icon)-[\w.]*\.png)$/i), 'live served a scalable or sized icon');
+    if (value.startsWith('neither favicon.svg nor')) {
+      const icon = /^\/(?:.*\/)?(favicon\.svg|(favicon|icon)-[\w.]*\.png)$/i;
+      // The icons live links sit in a folder of their own: kept at the same path in the build, they are live's.
+      const kept = base.liveFiles(icon);
+      const keptInBuild = kept.length > 0 && env?.dist && kept.every((p) => existsSync(join(env.dist, p.replace(/^\//, ''))));
+      return row(['/favicon.svg'], keptInBuild || !base.servedIcon(icon), 'live served a scalable or sized icon');
+    }
     m = /^apple-touch-icon\.png is (\d+x\d+)/.exec(value);
     if (m) {
       const live = base.livePngSize('/apple-touch-icon.png');
@@ -469,7 +482,7 @@ function placeholderRows(base, evidence) {
 
 // --------------------------------------------------------------------------- the reconciliation
 
-const listedCount = (detail) => Number((/^(\d+)\b/.exec(detail) ?? /^none of the (\d+)\b/.exec(detail) ?? [])[1] ?? 0);
+const listedCount = (detail) => Number((/^(\d+)\s/.exec(detail) ?? /^none of the (\d+)\b/.exec(detail) ?? [])[1] ?? 0);
 
 // No remote: `git remote` in dir prints nothing (a folder git does not know counts as no remote).
 function hasRemote(dir) {
@@ -527,6 +540,11 @@ function narrow(check, env, base, decisions) {
     const robotsFile = join(env.dist, 'robots.txt');
     const built = existsSync(robotsFile) ? sitemapLines(readFileSync(robotsFile, 'utf8')) : [];
     const rows = values.map((text) => {
+      if (text === 'robots.txt contains "Disallow: /", which blocks the whole site') {
+        // Only the group every crawler falls back to blocks the site; a named bot's group (an AI crawler opted out) does not.
+        const ok = existsSync(robotsFile) && !wildcardBlocks(readFileSync(robotsFile, 'utf8'));
+        return { text, ok, reason: ok ? null : 'the group for every crawler (User-agent: *) disallows /' };
+      }
       const host = /^the Sitemap: line points at (\S+), not /.exec(text)?.[1];
       if (!host) return { text, ok: false, reason: 'not an off-host Sitemap: line' };
       // pre-launch names the hostname (no port).
@@ -545,6 +563,28 @@ function narrow(check, env, base, decisions) {
     return { ok: rows.every((r) => r.ok), rule: 'no-sitemap', decision: ids.join(', ') || null, rows };
   }
   return undefined;
+}
+
+// Does a robots.txt disallow / for every crawler (a User-agent: * group)?
+function wildcardBlocks(text) {
+  let agents = [];
+  let open = false;
+  for (const raw of text.split(/\r\n|\r|\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    const sep = line.indexOf(':');
+    if (sep === -1) continue;
+    const name = line.slice(0, sep).trim().toLowerCase();
+    const value = line.slice(sep + 1).trim();
+    if (name === 'user-agent') {
+      if (!open) agents = [];
+      agents.push(value);
+      open = true;
+      continue;
+    }
+    open = false;
+    if (name === 'disallow' && value === '/' && agents.includes('*')) return true;
+  }
+  return false;
 }
 
 // The file the build serves for a url path, as pre-launch resolves it (plus a feed's index.xml).
