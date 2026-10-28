@@ -256,3 +256,10 @@ test('usage and missing inputs exit 2; --help exits 0', async () => {
   assert.equal(help.code, 0);
   assert.match(help.stdout, /--allow-extra/);
 });
+
+test('a page linked with its extension (/about.html) is the file of that name, in either build format', async () => {
+  const { pageFiles } = await import('../../skills/parity-gates/scripts/lib/dist.mjs');
+  assert.deepEqual(pageFiles('/about.html', 'file'), ['about.html']);
+  assert.deepEqual(pageFiles('/news/latest.html', 'directory'), ['news/latest.html']);
+  assert.deepEqual(pageFiles('/about/', 'file'), ['about.html', 'about/index.html']);
+});

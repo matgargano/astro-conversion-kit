@@ -44,6 +44,8 @@ const trim = (path) => decode(String(path).split(/[?#]/)[0]).replace(/^\/+|\/+$/
 export function pageFiles(path, format = 'directory') {
   const p = trim(path);
   if (!p) return ['index.html'];
+  // A page linked with its extension (/about.html) is the file of that name.
+  if (/\.html?$/i.test(p)) return [p];
   const both = [`${p}/index.html`, `${p}.html`];
   return format === 'file' ? both.reverse() : both;
 }
