@@ -459,6 +459,19 @@ test('placeholders.dev-host and placeholders.copy: a script live serves, kept by
   assert.equal((await at()).code, 1, 'a file that is not what live served blocks');
 });
 
+test('output.internal-refs: Cloudflare email-protection links are live\'s while the build serves the decode script', async () => {
+  const site = join(root, 'email-site');
+  mkdirSync(join(site, 'dist'), { recursive: true });
+  const planFile = planWith('plan-email', ['d2', 'output.internal-refs: references kept as captured']);
+  const rows = ['index.html -> /cdn-cgi/l/email-protection#abc', 'about/index.html -> /cdn-cgi/l/email-protection'];
+  const at = (extraRows = []) => run(['--findings', gateFile([failing('output.internal-refs', '2 references in the build point at paths no file would serve', [...rows, ...extraRows], 'file')]), '--baseline', baseline, '--plan', planFile, '--capture', capture, '--dir', site, '--json']);
+  assert.equal((await at()).code, 1, 'without the decode script they are broken links');
+  mkdirSync(join(site, 'dist', 'cdn-cgi', 'scripts', 'x', 'cloudflare-static'), { recursive: true });
+  writeFileSync(join(site, 'dist', 'cdn-cgi', 'scripts', 'x', 'cloudflare-static', 'email-decode.min.js'), '//');
+  assert.equal((await at()).code, 0);
+  assert.equal((await at(['index.html -> /gone/'])).code, 1, 'any other missing path still blocks');
+});
+
 test('output.404-page: a 404 without noindex is accepted when live had none and a decision names the check; one live noindexed blocks', async () => {
   const row = '404.html has no noindex, so search engines may index the error page';
   const planFile = planWith('plan-404-noindex', ['d2', 'output.404-page: the 404 page keeps its head, as live']);

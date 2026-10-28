@@ -6,7 +6,7 @@
 // Pure: reads files only. Exit codes: 0 nothing blocks, 1 something blocks, 2 usage or input error.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNodeVersion } from './lib/node-version.mjs';
@@ -341,6 +341,14 @@ const ROWS = {
     if (!m) return null;
     return [onPage(base, m[1], 'h1', value, (seo) => ((seo.h1 ?? []).length === Number(m[2]) ? null : `live recorded ${(seo.h1 ?? []).length}`))];
   },
+  'output.internal-refs': (base, value, _detail, env) => {
+    const m = /^(\S+) -> (\S+)$/.exec(value);
+    if (!m) return null;
+    // Cloudflare's email obfuscation links to /cdn-cgi/l/email-protection and its decode script rewrites them in the
+    // browser; the link is live's own while the build serves that script.
+    const decoded = m[2].startsWith('/cdn-cgi/l/email-protection') && hasEmailDecode(env?.dist);
+    return [{ text: value, field: 'link', paths: [], ok: decoded, reason: decoded ? null : 'not a link a script in the build resolves at run time' }];
+  },
   'placeholders.dev-host': (base, value, _detail, env) => {
     const m = /^(.+):(\d+) — (.+)$/.exec(value);
     if (!m) return null;
@@ -581,6 +589,13 @@ function narrow(check, env, base, decisions) {
     return { ok: rows.every((r) => r.ok), rule: 'no-sitemap', decision: ids.join(', ') || null, rows };
   }
   return undefined;
+}
+
+// Does the build hold Cloudflare's email-decode script (the one that turns /cdn-cgi/l/email-protection links back)?
+function hasEmailDecode(dist) {
+  const root = dist ? join(dist, 'cdn-cgi', 'scripts') : null;
+  if (!root || !existsSync(root)) return false;
+  return readdirSync(root, { withFileTypes: true }).some((e) => e.isDirectory() && existsSync(join(root, e.name, 'cloudflare-static', 'email-decode.min.js')));
 }
 
 // Does a robots.txt disallow / for every crawler (a User-agent: * group)?
