@@ -601,12 +601,12 @@ function narrow(check, env, base, decisions) {
   return undefined;
 }
 
-// The link targets exceptions.json keeps as broken on live (the links gate's own record of what live had).
+// The link targets exceptions.json keeps as they are (from equals to): the links gate holds each to what live had.
 function liveBrokenLinks(dir) {
   const file = dir ? join(dir, 'exceptions.json') : null;
   if (!file || !existsSync(file)) return new Set();
   try {
-    return new Set(JSON.parse(readFileSync(file, 'utf8')).filter((e) => e.field === 'link' && /broken on live/i.test(e.reason ?? '')).map((e) => String(e.from).split(/[?#]/)[0]));
+    return new Set(JSON.parse(readFileSync(file, 'utf8')).filter((e) => e.field === 'link' && e.from === e.to).map((e) => String(e.from).split(/[?#]/)[0]));
   } catch {
     return new Set();
   }
