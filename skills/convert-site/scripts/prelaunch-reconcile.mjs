@@ -4,6 +4,7 @@
 // decision that kept it, plus the narrow rules (the kit's form-id placeholder, the predecessor
 // checks that misread the trailing-slash rules, a live site with no sitemap). Everything else blocks.
 // Pure: reads files only. Exit codes: 0 nothing blocks, 1 something blocks, 2 usage or input error.
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -221,6 +222,15 @@ export function loadBaseline(dir, captureDir = null) {
     // The paths of live's own files (status 200) that match, from the capture's asset index.
     liveFiles: (pattern) => assets.filter((a) => a.status === 200 && a.url && pattern.test(pathnameOf(a.url) ?? '')).map((a) => pathnameOf(a.url)),
     isMedia: (path) => mediaPaths.has(path),
+    // capture/live-files.json: { "/path": sha256 } of files fetched from live and kept as served.
+    liveFileHash: (path) => captured('live-files.json', {})[path] ?? null,
+    isLiveFile(dirRoot, label) {
+      const rel = String(label).replace(/^(?:public|dist)\//, '');
+      const want = captured('live-files.json', {})[`/${rel}`];
+      const file = join(dirRoot, label);
+      if (!want || !existsSync(file)) return false;
+      return createHash('sha256').update(readFileSync(file)).digest('hex') === want;
+    },
     pagesWithOgImage: (image) => Object.keys(allSeo).filter((p) => sameUrl(allSeo[p].og?.image, image)),
     // The Sitemap: URLs of the live robots.txt the capture saved, [] without it.
     liveSitemapLines: () => {
@@ -330,6 +340,12 @@ const ROWS = {
     const m = /^(\S+) has (\d+) h1 elements$/.exec(value);
     if (!m) return null;
     return [onPage(base, m[1], 'h1', value, (seo) => ((seo.h1 ?? []).length === Number(m[2]) ? null : `live recorded ${(seo.h1 ?? []).length}`))];
+  },
+  'placeholders.dev-host': (base, value, _detail, env) => {
+    const m = /^(.+):(\d+) — (.+)$/.exec(value);
+    if (!m) return null;
+    const ok = Boolean(env?.dir) && base.isLiveFile(env.dir, m[1]);
+    return [{ text: value, field: 'placeholder text', paths: [], ok, reason: ok ? null : 'not a file live serves unchanged (capture/live-files.json)' }];
   },
   'output.404-page': (base, value) => {
     const m = /^(\S+) has no noindex, so search engines may index the error page$/.exec(value);
@@ -456,7 +472,7 @@ const LIVE_COUNTS = {
 
 // placeholders.copy: a page row is live when its baseline text, title or description shows the
 // same string; a source row is live when a live page row matched the same string.
-function placeholderRows(base, evidence) {
+function placeholderRows(base, evidence, env) {
   const rows = evidence.map(({ value }) => {
     const m = /^(.+):(\d+) — (.+)$/.exec(value);
     if (!m) return { text: value, field: 'placeholder text', paths: [], ok: false, reason: 'row not understood' };
@@ -468,6 +484,8 @@ function placeholderRows(base, evidence) {
         return shown.includes(match.toLowerCase()) ? null : `live did not show "${match}"`;
       });
     }
+    // A script live served, kept byte for byte: the strings in it are live's own.
+    if (env?.dir && base.isLiveFile(env.dir, label)) return { text: value, field: 'placeholder text', paths: [`/${rel}`], ok: true, reason: null, note: 'a file live serves, unchanged' };
     return { text: value, field: 'placeholder text', match, paths: [], ok: null };
   });
   for (const row of rows.filter((r) => r.ok === null)) {
@@ -642,7 +660,7 @@ export function reconcile(failing, base, decisions, env = { dir: '.', dist: 'dis
     }
     const parse = ROWS[check.id];
     let rows;
-    if (check.id === 'placeholders.copy') rows = placeholderRows(base, check.evidence);
+    if (check.id === 'placeholders.copy') rows = placeholderRows(base, check.evidence, env);
     else if (parse) {
       rows = check.evidence.flatMap(({ value }) => parse(base, String(value), check.detail, env)
         ?? [{ text: String(value), paths: [], ok: false, reason: 'row not understood' }]);

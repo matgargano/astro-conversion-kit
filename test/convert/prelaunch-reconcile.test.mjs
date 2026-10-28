@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
@@ -433,6 +434,29 @@ test('output.robots-txt is accepted when every off-host Sitemap: line is one the
   writeFileSync(join(site, 'dist', 'robots.txt'), 'User-agent: *\nAllow: /\n\nUser-agent: ClaudeBot\nUser-agent: CCBot\nDisallow: /\n');
   const bots = await at([check(everyone)]);
   assert.equal(bots.code, 0, bots.stdout + bots.stderr);
+});
+
+test('placeholders.dev-host and placeholders.copy: a script live serves, kept byte for byte, is live\'s own; an edited one blocks', async () => {
+  const live = join(root, 'vendor-capture');
+  cpSync(capture, live, { recursive: true });
+  const site = join(root, 'vendor-site');
+  mkdirSync(join(site, 'dist', 'bundle'), { recursive: true });
+  mkdirSync(join(site, 'public', 'bundle'), { recursive: true });
+  const source = 'var u="http://localhost:3000";var t="{{count}}";';
+  writeFileSync(join(site, 'dist', 'bundle', 'a.js'), source);
+  writeFileSync(join(site, 'public', 'bundle', 'a.js'), source);
+  const sha = (text) => createHash('sha256').update(text).digest('hex');
+  writeFileSync(join(live, 'live-files.json'), JSON.stringify({ '/bundle/a.js': sha(source) }));
+  const planFile = planWith('plan-vendor', ['d2', 'placeholders.dev-host: vendor scripts stay as live serves them'], ['d3', 'placeholders.copy: vendor scripts stay as live serves them']);
+  const checks = [
+    failing('placeholders.dev-host', '1 development host reference in 1 file', ['dist/bundle/a.js:1 — localhost'], 'file'),
+    failing('placeholders.copy', '1 placeholder string in 1 file', ['public/bundle/a.js:1 — {{count}}'], 'file'),
+  ];
+  const at = () => run(['--findings', gateFile(checks), '--baseline', baseline, '--plan', planFile, '--capture', live, '--dir', site, '--json']);
+  const ok = await at();
+  assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+  writeFileSync(join(site, 'dist', 'bundle', 'a.js'), `${source}//edited`);
+  assert.equal((await at()).code, 1, 'a file that is not what live served blocks');
 });
 
 test('output.404-page: a 404 without noindex is accepted when live had none and a decision names the check; one live noindexed blocks', async () => {
