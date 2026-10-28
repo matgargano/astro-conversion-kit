@@ -232,6 +232,7 @@ export function loadBaseline(dir, captureDir = null) {
       return createHash('sha256').update(readFileSync(file)).digest('hex') === want;
     },
     pagesWithOgImage: (image) => Object.keys(allSeo).filter((p) => sameUrl(allSeo[p].og?.image, image)),
+    hasLiveRobots: () => Boolean(captureDir) && existsSync(join(captureDir, 'robots.txt')),
     // The Sitemap: URLs of the live robots.txt the capture saved, [] without it.
     liveSitemapLines: () => {
       const file = captureDir ? join(captureDir, 'robots.txt') : null;
@@ -317,7 +318,8 @@ export function loadFailing(file) {
 
 // A row on a page: the baseline page it names, or a failing row when live had no such page.
 function onPage(base, rel, field, text, compare) {
-  const page = base.page(rel) === NOT_FOUND ? NOT_FOUND : base.page(relPath(rel));
+  // A page linked with its extension (about.html) is that path on live before it is /about.
+  const page = base.page(rel) === NOT_FOUND ? NOT_FOUND : (base.page(`/${String(rel).trim().replace(/^\/+/, '')}`) ?? base.page(relPath(rel)));
   if (page === null) return { text, field, paths: [relPath(rel)], ok: false, reason: `live has no page at ${relPath(rel)}` };
   const reason = compare(base.seo(page), page);
   return { text, field, paths: [page], ok: reason === null, reason };
@@ -347,7 +349,10 @@ const ROWS = {
     // Cloudflare's email obfuscation links to /cdn-cgi/l/email-protection and its decode script rewrites them in the
     // browser; the link is live's own while the build serves that script.
     const decoded = m[2].startsWith('/cdn-cgi/l/email-protection') && hasEmailDecode(env?.dist);
-    return [{ text: value, field: 'link', paths: [], ok: decoded, reason: decoded ? null : 'not a link a script in the build resolves at run time' }];
+    // A link the links gate already accepted as broken on live itself (exceptions.json) is live's own.
+    const brokenOnLive = liveBrokenLinks(env?.dir).has(m[2]);
+    const ok = decoded || brokenOnLive;
+    return [{ text: value, field: 'link', paths: [], ok, reason: ok ? null : 'not a link a script in the build resolves at run time, nor one live itself had broken' }];
   },
   'placeholders.dev-host': (base, value, _detail, env) => {
     const m = /^(.+):(\d+) — (.+)$/.exec(value);
@@ -571,6 +576,11 @@ function narrow(check, env, base, decisions) {
         const ok = existsSync(robotsFile) && !wildcardBlocks(readFileSync(robotsFile, 'utf8'));
         return { text, ok, reason: ok ? null : 'the group for every crawler (User-agent: *) disallows /' };
       }
+      if (text === 'robots.txt names no Sitemap:') {
+        // live's robots.txt named none either (capture/robots.txt), and the build names none
+        const ok = base.hasLiveRobots() && base.liveSitemapLines().length === 0 && built.length === 0;
+        return { text, ok, reason: ok ? null : 'live named a Sitemap: in robots.txt, or the capture saved none' };
+      }
       const host = /^the Sitemap: line points at (\S+), not /.exec(text)?.[1];
       if (!host) return { text, ok: false, reason: 'not an off-host Sitemap: line' };
       // pre-launch names the hostname (no port).
@@ -589,6 +599,17 @@ function narrow(check, env, base, decisions) {
     return { ok: rows.every((r) => r.ok), rule: 'no-sitemap', decision: ids.join(', ') || null, rows };
   }
   return undefined;
+}
+
+// The link targets exceptions.json keeps as broken on live (the links gate's own record of what live had).
+function liveBrokenLinks(dir) {
+  const file = dir ? join(dir, 'exceptions.json') : null;
+  if (!file || !existsSync(file)) return new Set();
+  try {
+    return new Set(JSON.parse(readFileSync(file, 'utf8')).filter((e) => e.field === 'link' && /broken on live/i.test(e.reason ?? '')).map((e) => String(e.from).split(/[?#]/)[0]));
+  } catch {
+    return new Set();
+  }
 }
 
 // Does the build hold Cloudflare's email-decode script (the one that turns /cdn-cgi/l/email-protection links back)?

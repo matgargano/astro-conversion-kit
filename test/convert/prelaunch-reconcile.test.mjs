@@ -472,6 +472,31 @@ test('output.internal-refs: Cloudflare email-protection links are live\'s while 
   assert.equal((await at(['index.html -> /gone/'])).code, 1, 'any other missing path still blocks');
 });
 
+test('output.robots-txt: no Sitemap: line is accepted when live\'s robots.txt named none either', async () => {
+  const live = join(root, 'nosm-capture');
+  cpSync(capture, live, { recursive: true });
+  const site = join(root, 'nosm-site');
+  mkdirSync(join(site, 'dist'), { recursive: true });
+  writeFileSync(join(site, 'dist', 'robots.txt'), 'User-agent: *\nAllow: /\n');
+  const row = 'robots.txt names no Sitemap:';
+  const at = () => run(['--findings', gateFile([failing('output.robots-txt', row, [row], 'text')]), '--baseline', baseline, '--plan', bare, '--capture', live, '--dir', site, '--json']);
+  writeFileSync(join(live, 'robots.txt'), 'User-agent: *\nAllow: /\n');
+  assert.equal((await at()).code, 0);
+  writeFileSync(join(live, 'robots.txt'), 'User-agent: *\nSitemap: https://www.fixture-roofing.test/sitemap.xml\n');
+  assert.equal((await at()).code, 1, 'live had a sitemap: the build must too');
+});
+
+test('output.internal-refs: a link exceptions.json keeps as broken on live is live\'s own', async () => {
+  const site = join(root, 'brokenlive-site');
+  mkdirSync(join(site, 'dist'), { recursive: true });
+  const planFile = planWith('plan-brokenlive', ['d2', 'output.internal-refs: references kept as captured']);
+  writeFileSync(join(site, 'exceptions.json'), JSON.stringify([{ path: '/', field: 'link', from: '/old.less', to: '/old.less', reason: 'broken on live', approvedBy: 'kit' }]));
+  const row = (ref) => `index.html -> ${ref}`;
+  const at = (ref) => run(['--findings', gateFile([failing('output.internal-refs', '1 reference in the build point at paths no file would serve', [row(ref)], 'file')]), '--baseline', baseline, '--plan', planFile, '--capture', capture, '--dir', site, '--json']);
+  assert.equal((await at('/old.less')).code, 0);
+  assert.equal((await at('/other.less')).code, 1);
+});
+
 test('output.404-page: a 404 without noindex is accepted when live had none and a decision names the check; one live noindexed blocks', async () => {
   const row = '404.html has no noindex, so search engines may index the error page';
   const planFile = planWith('plan-404-noindex', ['d2', 'output.404-page: the 404 page keeps its head, as live']);
